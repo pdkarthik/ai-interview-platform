@@ -31,10 +31,29 @@ export async function askLLM(
 }
 
 export function parseLLMJson<T>(content: string): T {
-  const cleaned = content
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/, "")
-    .trim();
+  let cleaned = content.trim();
+
+  const match = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (match) {
+    cleaned = match[1].trim();
+  } else {
+    const firstBrace = cleaned.indexOf("{");
+    const firstBracket = cleaned.indexOf("[");
+    const startIdx =
+      firstBrace !== -1 && firstBracket !== -1
+        ? Math.min(firstBrace, firstBracket)
+        : firstBrace !== -1
+          ? firstBrace
+          : firstBracket;
+
+    const lastBrace = cleaned.lastIndexOf("}");
+    const lastBracket = cleaned.lastIndexOf("]");
+    const endIdx = Math.max(lastBrace, lastBracket);
+
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      cleaned = cleaned.slice(startIdx, endIdx + 1);
+    }
+  }
 
   return JSON.parse(cleaned) as T;
 }

@@ -11,6 +11,16 @@ export function checkRateLimit(
   const ip = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
 
   const now = Date.now();
+
+  // Prune expired entries to prevent memory growth
+  if (rateLimitMap.size > 500) {
+    for (const [key, value] of rateLimitMap.entries()) {
+      if (now > value.resetAt) {
+        rateLimitMap.delete(key);
+      }
+    }
+  }
+
   const entry = rateLimitMap.get(ip);
 
   if (!entry || now > entry.resetAt) {

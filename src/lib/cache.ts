@@ -14,6 +14,14 @@ if (process.env.REDIS_URL) {
     redisReady = false;
   });
 
+  redisClient.on("ready", () => {
+    redisReady = true;
+  });
+
+  redisClient.on("reconnecting", () => {
+    redisReady = false;
+  });
+
   redisClient
     .connect()
     .then(() => {

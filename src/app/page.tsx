@@ -13,7 +13,11 @@ type Evaluation = {
   feedback: string;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
+function getApiEndpoint(endpoint: string): string {
+  const base = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "");
+  if (!base) return `/api${endpoint}`;
+  return base.endsWith("/api") ? `${base}${endpoint}` : `${base}/api${endpoint}`;
+}
 
 export default function Home() {
   const [jobTitle, setJobTitle] = useState("");
@@ -45,7 +49,7 @@ export default function Home() {
     setLoadingQuestions(true);
 
     try {
-      const response = await fetch(`${API_URL}/generate-questions`, {
+      const response = await fetch(getApiEndpoint("/generate-questions"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -100,7 +104,7 @@ export default function Home() {
     setLoadingEvaluation(true);
 
     try {
-      const response = await fetch(`${API_URL}/evaluate-responses`, {
+      const response = await fetch(getApiEndpoint("/evaluate-responses"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ responses }),
@@ -330,7 +334,7 @@ export default function Home() {
         )}
 
         <footer className="mt-12 text-center text-xs text-slate-500">
-          Built with Next.js, TypeScript, Express, Groq and Redis.
+          Built with Next.js App Router, TypeScript, Groq and Redis.
         </footer>
       </div>
     </main>
