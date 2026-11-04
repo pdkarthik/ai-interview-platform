@@ -1,6 +1,8 @@
-# AI Interview Platform: Automated Evaluation & Caching Architecture
+# AI Interview Question Generator & Evaluator
 
 An end-to-end full-stack AI platform designed to simulate realistic technical interviews. Candidates input a target role, tech stack, and difficulty level to receive three tailored technical interview questions. Upon answering, the platform evaluates responses in parallel using high-speed LLM inference, returning granular scores (0–10), actionable technical feedback per question, and an overall performance score.
+
+Built as a **unified full-stack Next.js application**, combining the interactive user interface and serverless API route handlers into a single, zero-CORS deployment.
 
 ---
 
@@ -14,83 +16,81 @@ An end-to-end full-stack AI platform designed to simulate realistic technical in
 4. [API Reference](#api-reference)
 5. [Setup & Installation](#setup--installation)
    - [Prerequisites](#prerequisites)
-   - [Backend Configuration & Setup](#backend-configuration--setup)
-   - [Frontend Configuration & Setup](#frontend-configuration--setup)
-6. [Production Build](#production-build)
+   - [Local Development Setup](#local-development-setup)
+6. [One-Click Vercel Deployment](#one-click-vercel-deployment)
 7. [Troubleshooting & FAQs](#troubleshooting--faqs)
 
 ---
 
 ## Architectural Approach
 
-The system follows a decoupled, client-server architecture designed for reliability, responsiveness, and cost-efficiency when interacting with large language models.
+The application utilizes a **Unified Full-Stack Architecture** powered by Next.js 16 App Router. Both the frontend client application and the backend API route handlers run on the same domain, completely eliminating cross-origin (CORS) friction and enabling instantaneous, relative-path communication.
 
 ```
-┌────────────────────────────────────────────────────────┐
-│               Frontend (Next.js 16 + React 19)          │
-│         Tailwind CSS v4 • Dark Theme • Client Forms    │
-└───────────────────────────┬────────────────────────────┘
-                            │ HTTP JSON / CORS
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│               Backend (Express 5 + TypeScript)          │
-│   Rate Limiter (5 req/min) • Input Sanitization        │
-└──────────────┬───────────────────────────┬─────────────┘
-               │ SHA-256 Hash              │ Low-Temp Inference
-               ▼                           ▼
-┌──────────────────────────────┐ ┌───────────────────────┐
-│ Two-Tier Cache Strategy      │ │ Groq Cloud API        │
-│ 1. Redis (TTL: 10m)          │ │ Model:                │
-│ 2. In-Memory Map (Fallback)  │ │ openai/gpt-oss-120b   │
-└──────────────────────────────┘ └───────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│              Unified Next.js 16 Full-Stack App              │
+├──────────────────────────────┬──────────────────────────────┤
+│      Frontend Client UI      │    Serverless API Routes     │
+│   React 19 • Tailwind CSS    │   /api/generate-questions   │
+│   Interactive Answer Form    │   /api/evaluate-responses   │
+│   Real-Time Score Display    │   /api/health                │
+└──────────────┬───────────────┴──────────────┬───────────────┘
+               │ Relative Fetch (/api/...)    │
+               └──────────────┬───────────────┘
+                              ▼
+┌──────────────────────────────┴──────────────────────────────┐
+│                    Backend Processing Layer                  │
+│       Rate Limiting (5 req/min) • Input Sanitization        │
+└──────────────┬──────────────────────────────┬───────────────┘
+               │ SHA-256 Hash                 │ Low-Temp Inference
+               ▼                              ▼
+┌──────────────────────────────┐   ┌──────────────────────────┐
+│   Two-Tier Cache Strategy    │   │      Groq Cloud API      │
+│ 1. Upstash Redis (TTL: 10m)  │   │          Model:          │
+│ 2. In-Memory Map (Fallback)  │   │   openai/gpt-oss-120b    │
+└──────────────────────────────┘   └──────────────────────────┘
 ```
 
 ### Key Architectural Decisions
 
-1. **Decoupled API & Client**:
-   - The frontend is an interactive single-page application built on Next.js 16 App Router.
-   - The backend is an Express 5 REST API running in Node.js with native ES Modules (`"type": "module"`).
-   - Strict CORS configuration ensures only authorized frontend origins can interact with backend endpoints.
+1. **Unified Full-Stack Deployment (Zero CORS)**:
+   - The UI and API live together under the same origin.
+   - Frontend components make direct relative network calls (`/api/generate-questions` and `/api/evaluate-responses`).
+   - No CORS preflight latency, no cross-origin blockers, and only **one** set of environment variables to configure.
 
-2. **Deterministic Prompt Hashing & Two-Tier Caching**:
-   - To minimize redundant API calls, generation requests are normalized: the job title is trimmed, skills are trimmed and sorted alphabetically, and difficulty is matched.
-   - A SHA-256 hash is computed over the normalized payload to generate a cache key (`questions:<sha256>`).
-   - **Tier 1 (Redis)**: Connects to Redis (e.g., Upstash or local) with a 600-second (10-minute) TTL.
-   - **Tier 2 (In-Memory Fallback)**: If Redis is unconfigured, unreachable, or disconnects during runtime, the system automatically falls back to an internal Node.js `Map` cache with expiration tracking without crashing or rejecting requests.
+2. **Deterministic Input Normalization & SHA-256 Hashing**:
+   - Question generation requests are normalized: the job title is trimmed, skills are trimmed and sorted alphabetically, and difficulty is matched.
+   - A cryptographic SHA-256 hash creates deterministic cache keys (`questions:<sha256>`).
+   - Repeated requests for the same role and skill set (regardless of skill order) hit the cache instantly, preserving LLM token quotas.
 
-3. **Deterministic LLM Output via Structured Prompts**:
-   - Uses the Groq SDK with `openai/gpt-oss-120b` at a low temperature (`0.3`) for deterministic evaluation.
-   - System prompts enforce strict JSON-only outputs.
-   - Defensive parsing cleans potential Markdown code fences (````json ... ````) before executing `JSON.parse`.
-   - Post-parsing schema verification enforces structural constraints (e.g., exactly 3 questions/evaluations, numerical range `0 <= score <= 10`, non-empty strings).
+3. **Two-Tier Resilient Caching**:
+   - **Tier 1 (Redis)**: Connects to Redis (e.g. [Upstash Redis](https://upstash.com/)) with a 600-second (10-minute) TTL.
+   - **Tier 2 (In-Memory Fallback)**: If Redis is offline or unconfigured, operations silently fail over to an internal in-memory cache with timestamp expiration without crashing the app.
 
-4. **Defensive Rate Limiting & Abuse Prevention**:
-   - Backed by `express-rate-limit`, limiting each client IP to 5 requests per minute.
-   - Emits draft-7 standard rate-limit headers (`RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`).
+4. **Deterministic LLM Output & Defensive Parsing**:
+   - Leverages Groq Cloud's low-latency inference on `openai/gpt-oss-120b` with a low temperature (`0.3`).
+   - Markdown code fences (````json ... ````) are stripped prior to parsing.
+   - Strict post-parsing validation verifies question counts (exactly 3), ID matching, non-empty feedback strings, and numerical bounds (`0 <= score <= 10`).
+
+5. **Built-In Rate Limiting**:
+   - Protects downstream AI quotas by capping requests to 5 requests per 60 seconds per IP via client IP header tracking (`x-forwarded-for`).
 
 ---
 
 ## Tech Stack
 
-### Frontend
-- **Framework**: [Next.js](https://nextjs.org/) 16.4.3 (App Router, Client Components)
-- **Library**: [React](https://react.dev/) 19.3.0
+### Framework & Language
+- **Full-Stack Framework**: [Next.js](https://nextjs.org/) 16.4.3 (App Router with Serverless Route Handlers)
+- **UI Library**: [React](https://react.dev/) 19.3.0
 - **Language**: [TypeScript](https://www.typescriptlang.org/) 5
-- **Styling**: [Tailwind CSS](https://tailwindcss.com/) v4 (using `@tailwindcss/turbopack`)
-- **Icons & Fonts**: Inline SVG assets and Geist Sans / Mono system fonts
-
-### Backend
-- **Runtime**: [Node.js](https://nodejs.org/) (ES Modules)
-- **Server Framework**: [Express.js](https://expressjs.com/) v5.3.0
-- **Language**: [TypeScript](https://www.typescriptlang.org/) 7.0.2 with `tsx` (v4.23.15) for dev execution
-- **API Security & Limits**: [cors](https://www.npmjs.com/package/cors) (2.8.6), [express-rate-limit](https://www.npmjs.com/package/express-rate-limit) (8.7.1)
-- **Environment Management**: [dotenv](https://www.npmjs.com/package/dotenv) (18.0.9)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/) v4 (with `@tailwindcss/turbopack`)
 
 ### AI & Data Storage
 - **LLM Provider**: [Groq Cloud](https://groq.com/) via `groq-sdk` (v1.6.0)
-- **Inference Model**: `openai/gpt-oss-120b` (low temperature: 0.3)
+- **Model**: `openai/gpt-oss-120b` (deterministic generation at temperature 0.3)
 - **Primary Cache**: [Redis](https://redis.io/) via `@redis/client` (v6.3.0) — Upstash Redis compatible
-- **Secondary Cache**: In-Memory Map with TTL expiration timestamps
+- **Secondary Cache**: Internal In-Memory Map with timestamp-based TTL expiry
+- **Hashing**: Node.js native `crypto` (SHA-256)
 
 ---
 
@@ -98,84 +98,39 @@ The system follows a decoupled, client-server architecture designed for reliabil
 
 ### Developer Perspective
 
-#### 1. Input Normalization & SHA-256 Key Derivation
-- When generating questions, arbitrary casing or varied ordering of skills (e.g., `["TypeScript", "React"]` vs. `["React", "TypeScript"]`) produces the exact same normalized hash:
-  ```typescript
-  const normalized = {
-    jobTitle: jobTitle.trim(),
-    skills: skills.map((s) => s.trim()).sort(),
-    difficulty,
-  };
-  const key = "questions:" + createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
-  ```
-- Maximizes cache hits and saves LLM token budget.
-
-#### 2. Dual-Layer Cache Engine with Automatic Failover
-- `backend/src/services/cache.ts` maintains an active connection listener:
-  ```typescript
-  redisClient.on("error", (error) => {
-    console.error("Redis error:", error.message);
-    redisReady = false;
-  });
-  ```
-- Reads attempt Redis retrieval first; if Redis flags `redisReady = false` or throws, it transparently drops to `memoryCache.get(key)`. Writes replicate this fallback pattern.
-
-#### 3. LLM JSON Fence Sanitization & Validation
-- Responses from open models occasionally contain surrounding ````json ... ```` fences. The backend strips them via regex prior to deserialization:
-  ```typescript
-  export function parseLLMJson<T>(content: string): T {
-    const cleaned = content
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```$/, "")
-      .trim();
-    return JSON.parse(cleaned) as T;
-  }
-  ```
-- Both `/generate-questions` and `/evaluate-responses` rigorously assert array shapes, item IDs, and boundary limits before responding with HTTP 200.
-
-#### 4. Rate Limiting Middleware
-- Protects downstream AI quotas from spikes or brute-force scripts:
-  - 5 requests per 60 seconds per IP.
-  - Returns `429 Too Many Requests` with a descriptive JSON message.
+* **Unified API Route Handlers (`frontend/src/app/api/`)**:
+  - `POST /api/generate-questions`: Validates inputs, computes SHA-256 key, checks Redis/memory cache, queries Groq if uncached, parses/validates JSON, stores to cache (TTL 600s), and returns questions.
+  - `POST /api/evaluate-responses`: Receives candidate answers, prompts Groq with technical evaluation rubrics, asserts 0–10 scoring boundaries, and returns structured feedback.
+  - `GET /api/health`: Health status endpoint for uptime checks.
+* **Resilient Cache Layer (`frontend/src/lib/cache.ts`)**:
+  - Automatically detects Redis connectivity. If disconnected, seamlessly routes gets and sets to an in-memory `Map`.
+* **Rate Limiter (`frontend/src/lib/rateLimiter.ts`)**:
+  - Lightweight sliding-window IP tracker using `x-forwarded-for` to guard endpoints on serverless platforms.
+* **Single Configuration Surface**:
+  - No need for separate backend URLs or cross-service sync; all server secrets (`GROQ_API_KEY`, `REDIS_URL`) stay securely on the server side.
 
 ---
 
 ### User Perspective
 
-#### 1. Interactive Interview Configuration
-- Candidates enter their targeted job position (e.g., *Senior Backend Engineer*), technical skill tags (e.g., *Golang, Docker, Kubernetes, PostgreSQL*), and difficulty (*Easy*, *Medium*, *Hard*).
-- Form validates inputs and prevents submitting empty or invalid skills.
-
-#### 2. Real-Time Generation Feedback
-- When submitted, the UI enters a loading state with an animated pulse indicator ("Generating tailored interview questions...").
-- Disables generation controls to avoid duplicate requests.
-
-#### 3. Question Workspace
-- Displays 3 discrete question cards with clean typography and numbering.
-- Provides independent multi-line text areas (`textarea`) with responsive height adjustment so candidates can articulate in-depth technical solutions and system design trade-offs.
-
-#### 4. Automated Evaluation & Constructive Feedback
-- Upon clicking **Evaluate My Answers**, the system ensures all 3 questions have answers before sending the request.
-- The AI evaluates each answer independently across:
-  - **Technical correctness**: Depth and validity of concepts.
-  - **Relevance**: Addressing the specific problem posed.
-  - **Completeness**: Handling edge cases and prerequisites.
-  - **Clarity**: Communication and structure.
-- Each question card dynamically renders:
-  - An **AI evaluation badge** with a numeric score out of 10 (e.g., `8/10`).
-  - Specific, actionable feedback highlighting strengths and targeted areas for improvement.
-
-#### 5. Cumulative Scorecard
-- Computes and highlights the candidate's **Overall average score** out of 10 in a prominent summary card at the bottom of the test.
+* **Customized Interview Setup**:
+  - Input target job title (e.g. *Full Stack Developer*), specific technical skills (*React, TypeScript, Node.js*), and choose difficulty (*Easy*, *Medium*, *Hard*).
+* **Instant Question Generation**:
+  - Generates 3 tailored, real-world technical interview questions based on the selected criteria.
+* **Dedicated Workspace**:
+  - Each question has its own dedicated multi-line answer box for drafting comprehensive technical solutions.
+* **AI Evaluation & Actionable Feedback**:
+  - Submitting answers delivers an AI evaluation badge with a score out of 10 and specific, constructive feedback detailing strengths and areas for technical improvement.
+* **Cumulative Performance Score**:
+  - Highlights an overall average score at the end of the interview to benchmark readiness.
 
 ---
 
 ## API Reference
 
 ### 1. Health Check
-- **Endpoint**: `GET /api/health`
-- **Description**: Verifies API availability.
-- **Response `200 OK`**:
+* **Endpoint**: `GET /api/health`
+* **Response `200 OK`**:
   ```json
   {
     "status": "ok",
@@ -186,186 +141,157 @@ The system follows a decoupled, client-server architecture designed for reliabil
 ---
 
 ### 2. Generate Questions
-- **Endpoint**: `POST /api/generate-questions`
-- **Rate Limit**: 5 requests / min
-- **Request Body**:
+* **Endpoint**: `POST /api/generate-questions`
+* **Rate Limit**: 5 requests / min
+* **Request Body**:
   ```json
   {
     "jobTitle": "Full Stack Engineer",
-    "skills": ["React", "Node.js", "PostgreSQL"],
+    "skills": ["React", "TypeScript", "Node.js"],
     "difficulty": "Medium"
   }
   ```
-- **Response `200 OK`**:
+* **Response `200 OK`**:
   ```json
   {
     "questions": [
       {
         "id": 1,
-        "question": "How does React's virtual DOM reconciliation algorithm work?"
+        "question": "How does React's virtual DOM diffing algorithm optimize re-renders?"
       },
       {
         "id": 2,
-        "question": "Explain how you handle asynchronous errors in Express middleware."
+        "question": "Explain how TypeScript utility types like Partial and Pick work under the hood."
       },
       {
         "id": 3,
-        "question": "What indexing strategy would you use in PostgreSQL for high-volume range queries?"
+        "question": "How does the Node.js event loop handle microtasks vs macrotasks?"
       }
     ],
     "cached": false
   }
   ```
-- **Error Responses**:
-  - `400 Bad Request`: Missing fields or invalid difficulty.
-  - `429 Too Many Requests`: Rate limit exceeded.
-  - `502 Bad Gateway`: LLM service unavailable or invalid response.
 
 ---
 
 ### 3. Evaluate Responses
-- **Endpoint**: `POST /api/evaluate-responses`
-- **Rate Limit**: 5 requests / min
-- **Request Body**:
+* **Endpoint**: `POST /api/evaluate-responses`
+* **Rate Limit**: 5 requests / min
+* **Request Body**:
   ```json
   {
     "responses": [
       {
         "id": 1,
-        "question": "How does React's virtual DOM reconciliation algorithm work?",
-        "answer": "It compares virtual DOM trees using a diffing algorithm..."
+        "question": "How does React's virtual DOM diffing algorithm optimize re-renders?",
+        "answer": "It uses heuristic O(n) diffing, comparing keys and element types..."
       },
       {
         "id": 2,
-        "question": "Explain how you handle asynchronous errors in Express middleware.",
-        "answer": "Using next(error) or Express 5 automatic promise rejection catching..."
+        "question": "Explain how TypeScript utility types like Partial and Pick work under the hood.",
+        "answer": "They use mapped types and keyof to iterate over interface keys..."
       },
       {
         "id": 3,
-        "question": "What indexing strategy would you use in PostgreSQL for high-volume range queries?",
-        "answer": "B-Tree index or BRIN indexes for ordered sequential data..."
+        "question": "How does the Node.js event loop handle microtasks vs macrotasks?",
+        "answer": "Microtasks (process.nextTick, Promise callbacks) run immediately after the current phase..."
       }
     ]
   }
   ```
-- **Response `200 OK`**:
+* **Response `200 OK`**:
   ```json
   {
     "evaluations": [
       {
         "id": 1,
         "score": 9,
-        "feedback": "Strong explanation of the diffing heuristics and key props."
+        "feedback": "Clear explanation of the O(n) heuristic diffing mechanism and key reconciliation."
       },
       {
         "id": 2,
-        "score": 8,
-        "feedback": "Accurate coverage of Express 5 error propagation; could mention custom error handlers."
+        "score": 8.5,
+        "feedback": "Accurate coverage of mapped types and keyof constraints."
       },
       {
         "id": 3,
-        "score": 8.5,
-        "feedback": "Good differentiation between B-Tree and BRIN indexes."
+        "score": 9,
+        "feedback": "Correct distinction between process.nextTick, promise microtasks, and libuv phases."
       }
     ]
   }
   ```
-- **Error Responses**:
-  - `400 Bad Request`: Must provide exactly 3 questions with non-empty answers.
-  - `429 Too Many Requests`: Rate limit exceeded.
-  - `502 Bad Gateway`: LLM service failed to format evaluations.
 
 ---
 
 ## Setup & Installation
 
 ### Prerequisites
-- **Node.js**: `v18.18+` or `v20+` recommended
-- **npm**: `v9+` or `pnpm` / `yarn`
-- **Groq API Key**: Obtain a free API key at [console.groq.com](https://console.groq.com/)
-- **Redis (Optional)**: Local Redis instance or a cloud Redis instance (e.g., [Upstash](https://upstash.com/))
+* **Node.js**: `v18.18+` or `v20+`
+* **npm**: `v9+` (or `pnpm` / `yarn`)
+* **Groq API Key**: Obtain a free key at [console.groq.com](https://console.groq.com/)
+* **Redis URL (Optional)**: Cloud Redis instance from [Upstash](https://upstash.com/) or local Redis
 
 ---
 
-### Backend Configuration & Setup
+### Local Development Setup
 
-1. **Navigate to the backend directory**:
-   ```bash
-   cd backend
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   npm install
-   ```
-
-3. **Configure environment variables**:
-   Create a `.env` file in the `backend/` directory:
-   ```env
-   # Server Configuration
-   PORT=4000
-   FRONTEND_URL=http://localhost:3000
-
-   # AI Provider
-   GROQ_API_KEY=your_groq_api_key_here
-
-   # Cache (Optional: leave empty or omit to use internal in-memory cache)
-   REDIS_URL=rediss://default:password@your-redis-host.upstash.io:6379
-   ```
-
-4. **Start the backend development server**:
-   ```bash
-   npm run dev
-   ```
-   The backend server will run on [http://localhost:4000](http://localhost:4000).
-
----
-
-### Frontend Configuration & Setup
-
-1. **Open a new terminal and navigate to the frontend directory**:
-   ```bash
+1. **Navigate to the frontend directory**:
+   ```powershell
    cd frontend
    ```
 
 2. **Install dependencies**:
-   ```bash
+   ```powershell
    npm install
    ```
 
 3. **Configure environment variables**:
-   Create a `.env` or `.env.local` file in the `frontend/` directory:
+   Create a `.env` (or `.env.local`) file inside the `frontend/` directory:
    ```env
-   NEXT_PUBLIC_API_URL=http://localhost:4000/api
+   # AI Provider
+   GROQ_API_KEY=your_groq_api_key_here
+
+   # Cache (Optional: omit to use internal in-memory fallback)
+   REDIS_URL=rediss://default:password@your-redis-host.upstash.io:6379
    ```
 
-4. **Start the frontend development server**:
-   ```bash
+4. **Start the unified development server**:
+   ```powershell
    npm run dev
    ```
 
-5. **Access the application**:
-   Open [http://localhost:3000](http://localhost:3000) in your web browser.
+5. **Open the application**:
+   Open [http://localhost:3000](http://localhost:3000) in your browser. Both the interactive UI and the API (`http://localhost:3000/api/health`) are active immediately!
 
 ---
 
-## Production Build
+## One-Click Vercel Deployment
 
-### Backend
-To compile TypeScript into JavaScript:
-```bash
-cd backend
-npm run build
-npm start
-```
+Because the application is unified in Next.js, deploying to Vercel requires **only 1 project**:
 
-### Frontend
-To produce an optimized Next.js production build:
-```bash
-cd frontend
-npm run build
-npm start
-```
+1. **Push your code to GitHub**:
+   ```powershell
+   git add .
+   git commit -m "feat: unified full-stack Next.js app"
+   git push origin main
+   ```
+
+2. **Import to Vercel**:
+   * Go to **[vercel.com/new](https://vercel.com/new)** and import your GitHub repository.
+   * Under **Root Directory**, click **Edit** and select:
+     ```
+     frontend
+     ```
+   * Vercel will automatically detect **Next.js**.
+
+3. **Add Environment Variables**:
+   * `GROQ_API_KEY` = your Groq API key
+   * `REDIS_URL` = your Upstash Redis connection string *(recommended for serverless caching)*
+
+4. **Deploy**:
+   * Click **Deploy**.
+   * Your entire platform (UI + API) will be live at `https://your-app.vercel.app` with zero CORS configuration required!
 
 ---
 
@@ -373,8 +299,7 @@ npm start
 
 | Issue | Cause | Resolution |
 | :--- | :--- | :--- |
-| **"GROQ_API_KEY is not configured"** | Missing or incorrect API key in `backend/.env`. | Verify that `GROQ_API_KEY` is set in `backend/.env` and restart the backend server. |
-| **"Too many requests. Please try again in one minute."** | Exceeded the 5 requests/minute threshold. | Wait 60 seconds before making additional question generation or evaluation requests. |
-| **"Redis unavailable; using memory cache"** | Redis host unreachable, invalid credentials, or offline. | No action required if you want in-memory caching. Otherwise, verify your `REDIS_URL` in `backend/.env`. |
-| **CORS errors in browser console** | `FRONTEND_URL` in `backend/.env` doesn't match client URL. | Ensure `FRONTEND_URL=http://localhost:3000` matches the host and port of your Next.js application. |
-| **"Please answer all three questions before evaluating"** | One or more text areas are blank or whitespace. | Provide text in each of the three question answer fields before submitting for evaluation. |
+| **"GROQ_API_KEY is not configured"** | Missing key in `.env` or Vercel Environment Variables. | Add `GROQ_API_KEY` to `frontend/.env` (locally) or Vercel Project Settings (production). |
+| **"Too many requests. Please try again in one minute."** | Rate limit threshold reached (5 req/min). | Wait 60 seconds before submitting another request. |
+| **"Redis unavailable; using memory cache"** | Redis host unreachable or unconfigured. | If using cloud Redis, verify `REDIS_URL` in your environment variables. Otherwise, in-memory cache is used automatically. |
+| **CORS errors** | Running separate backend/frontend ports instead of unified app. | With the unified Next.js app, requests hit `/api/...` directly on the same domain, preventing all CORS errors. |
