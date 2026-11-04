@@ -1,5 +1,7 @@
 # AI Interview Platform: Automated Evaluation & Caching Architecture
 
+> 🌐 **Live Demo:** [https://ai-interview-platform-seven-ruby.vercel.app](https://ai-interview-platform-seven-ruby.vercel.app)
+
 An end-to-end full-stack AI platform designed to simulate realistic technical interviews. Candidates input a target role, tech stack, and difficulty level to receive three tailored technical interview questions. Upon answering, the platform evaluates responses in parallel using high-speed LLM inference, returning granular scores (0–10), actionable technical feedback per question, and an overall performance score.
 
 Built as a **unified full-stack Next.js application**, combining the interactive user interface and serverless API route handlers into a single, zero-CORS deployment.
@@ -280,7 +282,7 @@ Deploying to Vercel is completely zero-config:
 
 4. **Deploy**:
    * Click **Deploy**.
-   * Your entire platform (UI + API) will be live at `https://your-app.vercel.app` with zero CORS configuration required!
+   * Your entire platform (UI + API) will be live at `https://ai-interview-platform-seven-ruby.vercel.app` with zero CORS configuration required!
 
 ---
 
