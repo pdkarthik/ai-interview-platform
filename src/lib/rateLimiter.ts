@@ -25,3 +25,4 @@ export function checkRateLimit(
   entry.count += 1;
   return { allowed: true, remaining: limit - entry.count };
 }
+

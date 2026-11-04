@@ -98,13 +98,13 @@ The application utilizes a **Unified Full-Stack Architecture** powered by Next.j
 
 ### Developer Perspective
 
-* **Unified API Route Handlers (`frontend/src/app/api/`)**:
+* **Unified API Route Handlers (`src/app/api/`)**:
   - `POST /api/generate-questions`: Validates inputs, computes SHA-256 key, checks Redis/memory cache, queries Groq if uncached, parses/validates JSON, stores to cache (TTL 600s), and returns questions.
   - `POST /api/evaluate-responses`: Receives candidate answers, prompts Groq with technical evaluation rubrics, asserts 0–10 scoring boundaries, and returns structured feedback.
   - `GET /api/health`: Health status endpoint for uptime checks.
-* **Resilient Cache Layer (`frontend/src/lib/cache.ts`)**:
+* **Resilient Cache Layer (`src/lib/cache.ts`)**:
   - Automatically detects Redis connectivity. If disconnected, seamlessly routes gets and sets to an in-memory `Map`.
-* **Rate Limiter (`frontend/src/lib/rateLimiter.ts`)**:
+* **Rate Limiter (`src/lib/rateLimiter.ts`)**:
   - Lightweight sliding-window IP tracker using `x-forwarded-for` to guard endpoints on serverless platforms.
 * **Single Configuration Surface**:
   - No need for separate backend URLs or cross-service sync; all server secrets (`GROQ_API_KEY`, `REDIS_URL`) stay securely on the server side.
@@ -236,18 +236,13 @@ The application utilizes a **Unified Full-Stack Architecture** powered by Next.j
 
 ### Local Development Setup
 
-1. **Navigate to the frontend directory**:
-   ```powershell
-   cd frontend
-   ```
-
-2. **Install dependencies**:
+1. **Install dependencies**:
    ```powershell
    npm install
    ```
 
-3. **Configure environment variables**:
-   Create a `.env` (or `.env.local`) file inside the `frontend/` directory:
+2. **Configure environment variables**:
+   Create a `.env` (or `.env.local`) file in the project root:
    ```env
    # AI Provider
    GROQ_API_KEY=your_groq_api_key_here
@@ -256,34 +251,28 @@ The application utilizes a **Unified Full-Stack Architecture** powered by Next.j
    REDIS_URL=rediss://default:password@your-redis-host.upstash.io:6379
    ```
 
-4. **Start the unified development server**:
+3. **Start the development server**:
    ```powershell
    npm run dev
    ```
 
-5. **Open the application**:
+4. **Open the application**:
    Open [http://localhost:3000](http://localhost:3000) in your browser. Both the interactive UI and the API (`http://localhost:3000/api/health`) are active immediately!
 
 ---
 
 ## One-Click Vercel Deployment
 
-Because the application is unified in Next.js, deploying to Vercel requires **only 1 project**:
+Deploying to Vercel is completely zero-config:
 
 1. **Push your code to GitHub**:
    ```powershell
-   git add .
-   git commit -m "feat: unified full-stack Next.js app"
    git push origin main
    ```
 
 2. **Import to Vercel**:
    * Go to **[vercel.com/new](https://vercel.com/new)** and import your GitHub repository.
-   * Under **Root Directory**, click **Edit** and select:
-     ```
-     frontend
-     ```
-   * Vercel will automatically detect **Next.js**.
+   * Vercel will automatically detect **Next.js** at the root with zero configuration needed.
 
 3. **Add Environment Variables**:
    * `GROQ_API_KEY` = your Groq API key

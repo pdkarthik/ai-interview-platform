@@ -6,3 +6,4 @@ export async function GET() {
     message: "AI Interview Evaluator API is running",
   });
 }
+

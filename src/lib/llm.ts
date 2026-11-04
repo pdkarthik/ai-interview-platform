@@ -1,19 +1,16 @@
 import Groq from "groq-sdk";
-import dotenv from "dotenv";
-
-dotenv.config();
-
-const apiKey = process.env.GROQ_API_KEY;
-
-const groq = apiKey ? new Groq({ apiKey }) : null;
 
 export async function askLLM(
   systemPrompt: string,
   userPrompt: string,
 ): Promise<string> {
-  if (!groq) {
+  const apiKey = process.env.GROQ_API_KEY;
+
+  if (!apiKey) {
     throw new Error("GROQ_API_KEY is not configured");
   }
+
+  const groq = new Groq({ apiKey });
 
   const completion = await groq.chat.completions.create({
     model: "openai/gpt-oss-120b",
@@ -41,3 +38,4 @@ export function parseLLMJson<T>(content: string): T {
 
   return JSON.parse(cleaned) as T;
 }
+
