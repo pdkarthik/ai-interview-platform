@@ -1,4 +1,4 @@
-# AI Interview Question Generator & Evaluator
+# AI Interview Platform: Automated Evaluation & Caching Architecture
 
 An end-to-end full-stack AI platform designed to simulate realistic technical interviews. Candidates input a target role, tech stack, and difficulty level to receive three tailored technical interview questions. Upon answering, the platform evaluates responses in parallel using high-speed LLM inference, returning granular scores (0–10), actionable technical feedback per question, and an overall performance score.
 
