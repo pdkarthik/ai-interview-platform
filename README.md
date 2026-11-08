@@ -294,3 +294,16 @@ Deploying to Vercel is completely zero-config:
 | **"Too many requests. Please try again in one minute."** | Rate limit threshold reached (5 req/min). | Wait 60 seconds before submitting another request. |
 | **"Redis unavailable; using memory cache"** | Redis host unreachable or unconfigured. | If using cloud Redis, verify `REDIS_URL` in your environment variables. Otherwise, in-memory cache is used automatically. |
 | **CORS errors** | Running separate backend/frontend ports instead of unified app. | With the unified Next.js app, requests hit `/api/...` directly on the same domain, preventing all CORS errors. |
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
+---
+
+## Author
+
+**Durga Karthik Panchumarthi**  
+- GitHub: [@pdkarthik](https://github.com/pdkarthik)
